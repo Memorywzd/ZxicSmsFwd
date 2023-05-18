@@ -74,7 +74,11 @@ class ZxicUtils:
             'Accept-Language': 'zh-CN',
             'Connection': 'keep-alive',
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0',
+            'Origin': f'http://{target_ip}',
+            'Referer': f'http://{target_ip}/index.html',
+            'DNT': '1',
+            'X-Requested-With': 'XMLHttpRequest'
         })
 
     def load_savefile(self):
@@ -192,7 +196,7 @@ class ZxicUtils:
             'page': '0',
             'data_per_page': '500',
             'mem_store': '1',
-            'tags': '10',
+            'tags': '1',
             'order_by': 'order by id desc'
         })
         resp = self.session.get(
@@ -224,9 +228,10 @@ class ZxicUtils:
         return resu['result'] == 'success'
 
     def mark_sms_as_read(self, sms_id):
+        after_id = sms_id + ';'
         params = urllib.parse.urlencode({
             'goformId': 'SET_MSG_READ',
-            'msg_id': sms_id,
+            'msg_id': after_id,
             'tag': '0'
         })
         resp = self.session.post(
