@@ -1,5 +1,6 @@
 import json
 
+
 def get_config(filename):
     f = open(filename, 'r')
     content = f.read()
@@ -7,11 +8,13 @@ def get_config(filename):
     conf = json.loads(content)
     return fill_default_config(conf)
 
+
 def set_config_default_value(config, key, value):
     try:
         config[key]
     except KeyError:
         config[key] = value
+
 
 def fill_default_config(config):
     set_config_default_value(config, 'telegram_host', 'api.telegram.org')

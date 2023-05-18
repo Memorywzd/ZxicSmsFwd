@@ -4,15 +4,16 @@ import requests
 import json
 import urllib
 import threading
-import time
 import base64
 import time
+
 
 def convert_sms_content_to_string(content_bytes_string):
     result = ''
     for i in range(0, len(content_bytes_string), 4):
-        result += chr(int(content_bytes_string[i:i+4], 16))
+        result += chr(int(content_bytes_string[i:i + 4], 16))
     return result
+
 
 def convert_string_to_sms_content(pending_str):
     result = ''
@@ -20,30 +21,33 @@ def convert_string_to_sms_content(pending_str):
         chr_hex = hex(ord(i))[2:].upper()
         padding = 4 - len(chr_hex)
         if padding > 0:
-            for i in range(0, padding):
+            for j in range(0, padding):
                 chr_hex = '0' + chr_hex
         result += chr_hex
     return result
 
-def get_current_time(split_char = ','):
+
+def get_current_time(split_char=','):
     current_time = time.localtime()
     timezone_offset = time.timezone if (time.localtime().tm_isdst == 0) else time.altzone
     timezone_int = int(timezone_offset / 60 / 60 * -1)
     timezone = str(timezone_int) if (timezone_int < 0) else f'+{timezone_int}'
-    t = time.strftime(f'%y{split_char}%m{split_char}%d{split_char}%H{split_char}%M{split_char}%S{split_char}{timezone}', current_time)
+    t = time.strftime(f'%y{split_char}%m{split_char}%d{split_char}%H{split_char}%M{split_char}%S{split_char}{timezone}',
+                      current_time)
     return t
 
-def parse_zxic_datetime(time, split_char = ','):
+
+def parse_zxic_datetime(time, split_char=','):
     time = time.split(split_char)
     return f'20{time[0]}-{time[1]}-{time[2]} {time[3]}:{time[4]}:{time[5]}'
 
-class ZxicUtils:
 
+class ZxicUtils:
     __CURRENT_PASSWORD__ = list()
     SAVEFILE = 'pwdchk-savefile.txt'
     TIMEOUT = 5
 
-    def __init__(self, target_ip, modem_type = 'zxic_web_new', min_length = 4) -> None:
+    def __init__(self, target_ip, modem_type='zxic_web_old', min_length=4) -> None:
         self.TARGET_IP = target_ip
         if modem_type == 'zxic_web_new':
             self.PROC_URL = f'http://{target_ip}/reqproc/proc_post'
@@ -99,8 +103,8 @@ class ZxicUtils:
         )
         resu = json.loads(resp.text)
         return resu['result'] != 'failure'
-    
-    def login(self, password = None) -> bool:
+
+    def login(self, password=None) -> bool:
         if password == None:
             password = self.__password
         else:
@@ -115,36 +119,6 @@ class ZxicUtils:
         )
         resu = json.loads(resp.text)
         return resu['result'] == '0'
-    
-    def check_login(self) -> bool:
-        params = urllib.parse.urlencode({
-            'multi_data': '1',
-            'sms_received_flag_flag': '0',
-            'sts_received_flag_flag': '0',
-            'cmd': 'loginfo',
-        })
-        resp = self.session.get(
-            self.PROC_GET_URL + '?' + params,
-            timeout=self.TIMEOUT
-        )
-        resu = json.loads(resp.text)
-        is_login = resu['loginfo'] == 'ok'
-        self.IS_LOGGED = is_login
-        return is_login
-    
-    def get_network_status(self) -> bool:
-        params = urllib.parse.urlencode({
-            'multi_data': '1',
-            'sms_received_flag_flag': '0',
-            'sts_received_flag_flag': '0',
-            'cmd': 'network_provider,signalbar,network_type,sub_network_type',
-        })
-        resp = self.session.get(
-            self.PROC_GET_URL + '?' + params,
-            timeout=self.TIMEOUT
-        )
-        resu = json.loads(resp.text)
-        return resu
 
     def check_login(self) -> bool:
         params = urllib.parse.urlencode({
@@ -161,6 +135,36 @@ class ZxicUtils:
         is_login = resu['loginfo'] == 'ok'
         self.IS_LOGGED = is_login
         return is_login
+
+    # def check_login(self) -> bool:
+    #     params = urllib.parse.urlencode({
+    #         'multi_data': '1',
+    #         'sms_received_flag_flag': '0',
+    #         'sts_received_flag_flag': '0',
+    #         'cmd': 'loginfo',
+    #     })
+    #     resp = self.session.get(
+    #         self.PROC_GET_URL + '?' + params,
+    #         timeout=self.TIMEOUT
+    #     )
+    #     resu = json.loads(resp.text)
+    #     is_login = resu['loginfo'] == 'ok'
+    #     self.IS_LOGGED = is_login
+    #     return is_login
+
+    def get_network_status(self) -> bool:
+        params = urllib.parse.urlencode({
+            'multi_data': '1',
+            'sms_received_flag_flag': '0',
+            'sts_received_flag_flag': '0',
+            'cmd': 'network_provider,signalbar,network_type,sub_network_type',
+        })
+        resp = self.session.get(
+            self.PROC_GET_URL + '?' + params,
+            timeout=self.TIMEOUT
+        )
+        resu = json.loads(resp.text)
+        return resu
 
     def get_sms_count(self):
         params = urllib.parse.urlencode({
@@ -357,7 +361,7 @@ class ZxicUtils:
             time.sleep(1)
             wait_times += 1
 
-    def start(self, threads = 6):
+    def start(self, threads=6):
         self.IS_STARTED = True
         check_login_thread = threading.Thread(target=self.check_login_loop)
         check_login_thread.start()
@@ -378,11 +382,12 @@ class ZxicUtils:
             for i in check_threads:
                 i.join()
             self.save_to_file()
-    
+
     def common_disable_network(self):
         self.change_wifi_ap(False)
         self.change_network_auto_connect(False)
         self.change_network_status(False)
+
 
 if __name__ == '__main__':
     host_ip = '172.17.0.1'
@@ -390,4 +395,4 @@ if __name__ == '__main__':
     checker.login('admin')
     checker.common_disable_network()
     print(checker.get_sms_list())
-    #checker.start()
+    # checker.start()

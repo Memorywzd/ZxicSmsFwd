@@ -2,8 +2,9 @@ import time
 import requests
 import json
 import zxic_utils
-#import traceback
+# import traceback
 import threading
+
 
 class SmsForwarder:
     UPDATE_ID = 0
@@ -20,6 +21,10 @@ class SmsForwarder:
         self.LOOP_ENABLED = True
         self.init_modems()
 
+    def do_modem_init(self, modem_controller):
+        modem_controller['controller'].login(modem_controller['login_password'])
+        modem_controller['controller'].common_disable_network()
+
     def init_modems(self):
         self.sms_modems = []
         for i in self.config['modems']:
@@ -32,8 +37,11 @@ class SmsForwarder:
                 self.do_modem_init(i)
             except:
                 i['modem_status'] = 'offline'
-                self.send_telegram_message(self.config['telegram_chat_id'], f"[设备掉线]\n设备名称：{i['name']}，Modem IP：{i['modem_ip']}")
+                self.send_telegram_message(self.config['telegram_chat_id'],
+                                           f"[设备启动失败]\n设备名称：{i['name']}，Modem IP：{i['modem_ip']}")
             self.sms_modems.append(i)
+            self.send_telegram_message(self.config['telegram_chat_id'],
+                                       f"[设备上线]\n设备名称：{i['name']}，Modem IP：{i['modem_ip']}")
 
     def start(self):
         cmd_recv_thread = threading.Thread(target=self.do_process_commands_task)
@@ -42,7 +50,7 @@ class SmsForwarder:
 
     def get_telegram_commands(self):
         resp = self.session.get(
-            self.telegram_url + 'getUpdates',
+            self.telegram_url + 'getUpdates' + '?offset=' + str(self.UPDATE_ID),
             timeout=self.TIMEOUT
         )
         commands = json.loads(resp.text)
@@ -51,15 +59,77 @@ class SmsForwarder:
         else:
             raise RuntimeError('Unknown error from Telegram api server: ' + resp.text)
 
+    def do_process_commands_task(self):
+        while self.LOOP_ENABLED:
+            try:
+                commands = self.get_telegram_commands()
+            except RuntimeError as e:
+                raise e
+            except:
+                time.sleep(1)
+                continue
+            for i in commands['result']:
+                if i['update_id'] > self.UPDATE_ID:
+                    self.UPDATE_ID = i['update_id']
+                    message = i['message']
+                    if message['from']['id'] not in self.config['trust_command_from']:
+                        print(f"Sender {message['from']['id']} is not in trust list.")
+                        continue
+                    try:
+                        commands_pos = message['entities']
+                    except KeyError:
+                        continue
+                    chat_id = message['chat']['id']
+                    command = None
+                    for cmd in commands_pos:
+                        if cmd['offset'] == 0 and cmd['type'] == 'bot_command':
+                            command = message['text'][cmd['offset']:cmd['length']]
+                    if command is None:
+                        continue
+                    elif command == '/stop':
+                        self.LOOP_ENABLED = False
+                    elif command == '/get_devices' or command == '自检':
+                        self.send_devices_message(chat_id)
+                    elif command == '/send_sms':
+                        command_params = message['text'][cmd['offset'] + cmd['length']:]
+                        if len(command_params) > 2:
+                            command_params = command_params[1:]
+                        command_params = command_params.split(' ')
+                        if len(command_params) < 3:
+                            self.send_telegram_message(
+                                chat_id,
+                                'Usage: /send_sms <device_name> <target_phone> <content>')
+                            continue
+                        device_name = command_params[0]
+                        target_phone = command_params[1]
+                        if not target_phone.isdigit():
+                            self.send_telegram_message(
+                                chat_id,
+                                'Usage: /send_sms <device_name> <target_phone> <content>')
+                            continue
+                        current_pos = 0
+                        content = ''
+                        for j in command_params:
+                            current_pos += 1
+                            if current_pos < 3:
+                                continue
+                            if current_pos == 3:
+                                content = j
+                            else:
+                                content += ' ' + j
+                        self.send_telegram_message(chat_id, f'{device_name}, {target_phone}, {content}')
+                        # self.do_send_sms_task(chat_id, device_name, target_phone, content)
+            time.sleep(1)
+
     def send_telegram_message(self, chat_id, content):
         try:
             resp = self.session.post(
                 self.telegram_url + 'sendMessage',
                 timeout=self.TIMEOUT,
                 data=json.dumps({
-                'chat_id': chat_id,
-                'text': content
-            }))
+                    'chat_id': chat_id,
+                    'text': content
+                }))
             result = json.loads(resp.text)
         except:
             print('Send Telegram message failed.')
@@ -68,10 +138,6 @@ class SmsForwarder:
             return result
         else:
             raise RuntimeError('Unknown error from Telegram api server: ' + resp.text)
-    
-    def do_modem_init(self, modem_controller):
-        modem_controller['controller'].login(modem_controller['login_password'])
-        modem_controller['controller'].common_disable_network()
 
     def do_get_sms_task(self):
         for ctrl in self.sms_modems:
@@ -82,12 +148,14 @@ class SmsForwarder:
             except:
                 if ctrl['modem_status'] == 'online':
                     ctrl['modem_status'] = 'offline'
-                    self.send_telegram_message(self.config['telegram_chat_id'], f"[设备掉线]\n设备名称：{ctrl['name']}，Modem IP：{ctrl['modem_ip']}")
+                    self.send_telegram_message(self.config['telegram_chat_id'],
+                                               f"[设备掉线]\n设备名称：{ctrl['name']}，Modem IP：{ctrl['modem_ip']}")
                 continue
             if ctrl['modem_status'] == 'offline':
                 ctrl['modem_status'] = 'online'
                 self.do_modem_init(ctrl)
-                self.send_telegram_message(self.config['telegram_chat_id'], f"[设备上线]\n设备名称：{ctrl['name']}，Modem IP：{ctrl['modem_ip']}")
+                self.send_telegram_message(self.config['telegram_chat_id'],
+                                           f"[设备上线]\n设备名称：{ctrl['name']}，Modem IP：{ctrl['modem_ip']}")
             for sms in sms_list:
                 if sms['tag'] == '2':
                     msg = f"✅通过 {ctrl['name']} 发送短信给 {sms['number']} 成功。"
@@ -103,66 +171,8 @@ class SmsForwarder:
                         continue
                     self.__MSG_IDS.pop(msgid)
                     msg = f"[收到短信]\n接收设备：{ctrl['name']}\n来自：{sms['number']}\n收到日期：{sms['date']}\n{sms['content']}"
-                if self.send_telegram_message(self.config['telegram_chat_id'], msg) != None:
-                    ctrl['controller'].delete_sms(sms['id'])
-    
-    def do_process_commands_task(self):
-        while self.LOOP_ENABLED:
-            try:
-                commands = self.get_telegram_commands()
-            except RuntimeError as e:
-                raise e
-            except:
-                time.sleep(1)
-                continue
-            for i in commands['result']:
-                if i['update_id'] > self.UPDATE_ID:
-                    self.UPDATE_ID = i['update_id']
-                    message = i['message']
-                    if message['from']['id'] not in self.config['trust_command_from']:
-                        print(f"Sender {message['from']['id']} is not in trust db.")
-                        continue
-                    try:
-                        commands_pos = message['entities']
-                    except KeyError:
-                        continue
-                    chat_id = message['chat']['id']
-                    command = None
-                    for cmd in commands_pos:
-                        if cmd['offset'] == 0 and cmd['type'] == 'bot_command':
-                            command = message['text'][cmd['offset']:cmd['length']]
-                    if command == None:
-                        continue
-                    elif command == '/stop':
-                        self.LOOP_ENABLED = False
-                    elif command == '/get_devices':
-                        self.send_devices_message(chat_id)
-                    elif command == '/send_sms':
-                        command_params = message['text'][cmd['offset'] + cmd['length']:]
-                        if len(command_params) > 2:
-                            command_params = command_params[1:]
-                        command_params = command_params.split(' ')
-                        if len(command_params) < 3:
-                            self.send_telegram_message(chat_id, 'Usage: /send_sms <device_name> <target_phone> <content>')
-                            continue
-                        device_name = command_params[0]
-                        target_phone = command_params[1]
-                        if not target_phone.isdigit():
-                            self.send_telegram_message(chat_id, 'Usage: /send_sms <device_name> <target_phone> <content>')
-                            continue
-                        current_pos = 0
-                        content = ''
-                        for i in command_params:
-                            current_pos += 1
-                            if current_pos < 3:
-                                continue
-                            if current_pos == 3:
-                                content = i
-                            else:
-                                content += ' ' + i
-                        #self.send_telegram_message(chat_id, f'{device_name}, {target_phone}, {content}')
-                        self.do_send_sms_task(chat_id, device_name, target_phone, content)
-            time.sleep(1)
+                # if self.send_telegram_message(self.config['telegram_chat_id'], msg) is not None:
+                #    ctrl['controller'].delete_sms(sms['id'])
 
     def do_send_sms_task(self, chat_id, device_name, target_phone, content):
         has_this_modem = False
@@ -172,7 +182,8 @@ class SmsForwarder:
                 i['controller'].send_sms(target_phone, content)
                 break
         if not has_this_modem:
-            self.send_telegram_message(chat_id, f'❗️发送短信失败，找不到指定的 Modem： {device_name}\n请使用 /get_devices 查看所有 Modem 的名称')
+            self.send_telegram_message(chat_id,
+                                       f'❗️发送短信失败，找不到指定的 Modem： {device_name}\n请使用 /get_devices 查看所有 Modem 的名称')
 
     def send_devices_message(self, chat_id):
         msg = '[设备列表]\n'
