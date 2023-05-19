@@ -161,7 +161,7 @@ class ZxicUtils:
             'multi_data': '1',
             'sms_received_flag_flag': '0',
             'sts_received_flag_flag': '0',
-            'cmd': 'network_provider,signalbar,network_type,sub_network_type',
+            'cmd': 'network_provider,signalbar,lte_rsrp,network_type,sub_network_type',
         })
         resp = self.session.get(
             self.PROC_GET_URL + '?' + params,
@@ -190,13 +190,13 @@ class ZxicUtils:
             'sms_sim_draft_total': resu['sms_sim_draftbox_total']
         }
 
-    def get_sms_list(self):
+    def get_sms_list(self, tag='1'):
         params = urllib.parse.urlencode({
             'cmd': 'sms_data_total',
             'page': '0',
             'data_per_page': '500',
             'mem_store': '1',
-            'tags': '1',
+            'tags': tag,
             'order_by': 'order by id desc'
         })
         resp = self.session.get(

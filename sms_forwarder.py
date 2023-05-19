@@ -52,6 +52,7 @@ class SmsForwarder:
                 self.send_telegram_message(self.config['telegram_chat_id'],
                                            f"[设备启动成功]\n设备名称：{i['name']}，设备IP：{i['modem_ip']}")
                 self.init_failed = False
+
     def start(self):
         cmd_recv_thread = threading.Thread(target=self.do_process_commands_task)
         cmd_recv_thread.start()
@@ -114,7 +115,7 @@ class SmsForwarder:
                     print(f"Command: {command}")
                     if command == '/stop':
                         self.LOOP_ENABLED = False
-                    elif command == '/get_devices' or command == 'check' or command == '自检':
+                    elif command == '/get_devices' or command == '/start' or command == '自检':
                         self.send_devices_message(chat_id)
                     elif command == '/send_sms':
                         command_params = message['text'][cmd['offset'] + cmd['length']:]
@@ -143,7 +144,7 @@ class SmsForwarder:
                                 content = j
                             else:
                                 content += ' ' + j
-                        self.send_telegram_message(chat_id, f'{device_name}, {target_phone}, {content}')
+                        self.send_telegram_message(self.config['telegram_chat_id'], f'{device_name}, {target_phone}, {content}')
                         # self.do_send_sms_task(chat_id, device_name, target_phone, content)
             time.sleep(1)
 
@@ -157,16 +158,38 @@ class SmsForwarder:
                     'text': content
                 }))
             result = json.loads(resp.text)
+            params = {'access_token': self.config['access_token']}
+            data = {
+                'message_type': self.config['message_type'],
+                'group_id': self.config['qq_id'],
+                'message': content
+            }
+            on_send_message = self.session.post(
+                url=self.config['bot_url'],
+                params=params,
+                data=json.dumps(data)
+            )
+            response_data = on_send_message.json()
         except:
             print('Send Telegram message failed.')
             return None
-        if result['ok']:
+        if result['ok'] and response_data.get('status') == 'ok':
             return result
         else:
             raise RuntimeError('Unknown error from Telegram api server: ' + resp.text)
 
+    def delete_sms_in_need(self, ctrl):
+        sms_list = ctrl['controller'].get_sms_list(tag='10')
+        count = ctrl['controller'].get_sms_count()
+        count_total = int(count['max_sms_storage'])
+        count_used = int(count['sms_inbox_total']) + int(count['sms_send_total']) + int(count['sms_draft_total'])
+        if count_used + 11 > count_total:
+            last_sms = sms_list[-1]
+            ctrl['controller'].delete_sms(last_sms['id'])
+            print(f"SMS count: {count_used}/{count_total}")
+            print('SMS count is over 90%, try to delete sms id: ' + last_sms['id'])
+
     def do_get_sms_task(self):
-        print('call do_get_sms_task')
         for ctrl in self.sms_modems:
             try:
                 if not ctrl['controller'].check_login():
@@ -188,6 +211,7 @@ class SmsForwarder:
                 self.do_modem_init(ctrl)
                 self.send_telegram_message(self.config['telegram_chat_id'],
                                            f"[设备上线]\n设备名称：{ctrl['name']}，设备IP：{ctrl['modem_ip']}")
+                self.send_devices_message(self.config['telegram_chat_id'])
             sms_list = ctrl['controller'].get_sms_list()
             for sms in sms_list:
                 if sms['tag'] == '2':
@@ -207,7 +231,7 @@ class SmsForwarder:
                     msg = f"[收到短信]\n接收设备：{ctrl['name']}\n来自：{sms['number']}\n收到日期：{sms['date']}\n\n{sms['content']}"
                 if self.send_telegram_message(self.config['telegram_chat_id'], msg) is not None:
                     print(f"Send message to Telegram:\n {msg}")
-                    # ctrl['controller'].delete_sms(sms['id'])
+                    self.delete_sms_in_need(ctrl)
 
     def do_send_sms_task(self, chat_id, device_name, target_phone, content):
         has_this_modem = False
@@ -237,6 +261,7 @@ class SmsForwarder:
                     for i in range(0, 5 - signal_num):
                         signal += '⚪️'
                     msg += f"📶设备信号：{signal}\n"
+                    msg += f"📶信号强度：{device_status['lte_rsrp']}\n"
                     msg += f"📶网络类型：{device_status['network_type']}, {device_status['sub_network_type']}\n"
             except:
                 msg += '设备状态无法取得数据。\n'
