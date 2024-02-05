@@ -197,7 +197,7 @@ class ZxicUtils:
             'data_per_page': '500',
             'mem_store': '1',
             'tags': tag,
-            'order_by': 'order by id desc'
+            'order_by': 'order by id'
         })
         resp = self.session.get(
             self.PROC_GET_URL + '?' + params,

@@ -76,7 +76,7 @@ class SmsForwarder:
             except RuntimeError as e:
                 raise e
             except:
-                time.sleep(1)
+                time.sleep(5)
                 continue
             for i in commands['result']:
                 if i['update_id'] > self.UPDATE_ID:
@@ -146,7 +146,7 @@ class SmsForwarder:
                                 content += ' ' + j
                         self.send_telegram_message(self.config['telegram_chat_id'], f'{device_name}, {target_phone}, {content}')
                         # self.do_send_sms_task(chat_id, device_name, target_phone, content)
-            time.sleep(1)
+            time.sleep(2)
 
     def send_telegram_message(self, chat_id, content):
         try:
@@ -176,7 +176,7 @@ class SmsForwarder:
         if result['ok'] and response_data.get('status') == 'ok':
             return result
         else:
-            raise RuntimeError('Unknown error from Telegram api server: ' + resp.text)
+            raise RuntimeError('Unknown error: ' + resp.text + '\n' + on_send_message.text)
 
     def delete_sms_in_need(self, ctrl):
         sms_list = ctrl['controller'].get_sms_list(tag='10')
