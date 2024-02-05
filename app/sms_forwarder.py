@@ -176,7 +176,7 @@ class SmsForwarder:
         if result['ok'] and response_data.get('status') == 'ok':
             return result
         else:
-            raise RuntimeError('Unknown error: ' + resp.text + '\n' + on_send_message.text)
+            print('Unknown error: ' + resp.text + '\n' + on_send_message.text)
 
     def delete_sms_in_need(self, ctrl):
         sms_list = ctrl['controller'].get_sms_list(tag='10')
