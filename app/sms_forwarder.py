@@ -71,12 +71,20 @@ class SmsForwarder:
 
     def do_process_commands_task(self):
         while self.LOOP_ENABLED:
+            command = None
             try:
                 commands = self.get_telegram_commands()
             except RuntimeError as e:
                 raise e
             except:
                 time.sleep(5)
+                continue
+            if self.first_loop or self.first_command == command:
+                self.first_loop = False
+                print('First loop, skip commands.')
+                for i in commands['result']:
+                        self.UPDATE_ID = i['update_id']
+                self.get_telegram_commands()
                 continue
             for i in commands['result']:
                 if i['update_id'] > self.UPDATE_ID:
@@ -99,7 +107,6 @@ class SmsForwarder:
                         except KeyError:
                             continue
                     chat_id = message['chat']['id']
-                    command = None
                     if commands_pos is None and text is not None:
                         command = text
                     else:
@@ -107,10 +114,6 @@ class SmsForwarder:
                             if cmd['offset'] == 0 and cmd['type'] == 'bot_command':
                                 command = message['text'][cmd['offset']:cmd['length']]
                     if command is None:
-                        continue
-                    if self.first_loop or self.first_command == command:
-                        self.first_loop = False
-                        print('First loop, skip command.')
                         continue
                     print(f"Command: {command}")
                     if command == '/stop':
@@ -158,6 +161,10 @@ class SmsForwarder:
                     'text': content
                 }))
             result = json.loads(resp.text)
+        except:
+            print('Send Telegram message failed.')
+            return None
+        try:
             params = {'access_token': self.config['access_token']}
             data = {
                 'message_type': self.config['message_type'],
@@ -171,7 +178,7 @@ class SmsForwarder:
             )
             response_data = on_send_message.json()
         except:
-            print('Send Telegram message failed.')
+            print('Send QQ message failed.')
             return None
         if result['ok'] and response_data.get('status') == 'ok':
             return result
