@@ -26,9 +26,10 @@ class SmsForwarder:
         self.init_modems()
 
     def do_modem_init(self, modem_controller):
-        print('call do_modem_init')
-        modem_controller['controller'].login(modem_controller['login_password'])
-        modem_controller['controller'].common_disable_network()
+        if modem_controller['controller'].login(modem_controller['login_password']) is False:
+            print(f"Device login failed.")
+        else:
+            modem_controller['controller'].common_disable_network()
 
     def init_modems(self):
         self.sms_modems = []
@@ -169,6 +170,7 @@ class SmsForwarder:
             data = {
                 'message_type': self.config['message_type'],
                 'group_id': self.config['qq_id'],
+                'user_id': self.config['qq_id'],
                 'message': content
             }
             on_send_message = self.session.post(
@@ -200,7 +202,7 @@ class SmsForwarder:
         for ctrl in self.sms_modems:
             try:
                 if not ctrl['controller'].check_login():
-                    print(f"Device {ctrl['name']} login failed, try to re-init.")
+                    # print(f"Device {ctrl['name']} login failed, try to re-init.")
                     self.do_modem_init(ctrl)
             except:
                 if ctrl['modem_status'] == 'online':
